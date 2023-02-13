@@ -58,6 +58,21 @@ try:
 except ImportError:
     has_tracemalloc = False
 
+_INJECTED_BACKENDS = {}
+ALL_BACKENDS = [
+        ('psutil', True),
+        ('psutil_pss', True),
+        ('psutil_uss', True),
+        ('posix', os.name == 'posix'),
+        ('tracemalloc', has_tracemalloc),
+    ]
+
+def inject_backend(backend, get_memory):
+    """
+    Injects a backend into the list of available backends.
+    """
+    ALL_BACKENDS.append((backend, True))
+    _INJECTED_BACKENDS[backend] = get_memory
 
 class MemitResult(object):
     """memit magic run details.
@@ -218,6 +233,14 @@ def _get_memory(pid, backend, timestamps=False, include_children=False, filename
              'psutil_pss': lambda: _ps_util_full_tool(memory_metric="pss"),
              'psutil_uss': lambda: _ps_util_full_tool(memory_metric="uss"),
              'posix': posix_tool}
+    
+    for tool, _ in ALL_BACKENDS:
+        if tool not in tools:
+            if tool in _INJECTED_BACKENDS:
+                tools[tool] = lambda: _INJECTED_BACKENDS[tool](pid, timestamps, include_children)
+            else:
+                raise RuntimeError(f'Unknown backend `{tool}`')
+
     return tools[backend]()
 
 
@@ -1205,13 +1228,7 @@ def choose_backend(new_backend=None):
     """
 
     _backend = 'no_backend'
-    all_backends = [
-        ('psutil', True),
-        ('psutil_pss', True),
-        ('psutil_uss', True),
-        ('posix', os.name == 'posix'),
-        ('tracemalloc', has_tracemalloc),
-    ]
+    all_backends = ALL_BACKENDS[:]
     backends_indices = dict((b[0], i) for i, b in enumerate(all_backends))
 
     if new_backend is not None:
@@ -1325,10 +1342,9 @@ if __name__ == '__main__':
     parser.add_argument('--include-children', dest='include_children',
         default=False, action='store_true',
         help='also include memory used by child processes')
-    parser.add_argument('--backend', dest='backend', type=str, action='store',
-        choices=['tracemalloc', 'psutil', 'psutil_pss', 'psutil_uss', 'posix'], default='psutil',
+    parser.add_argument('--backend', dest='backend', type=str, action='store', default='psutil',
         help='backend using for getting memory info '
-             '(one of the {tracemalloc, psutil, posix, psutil_pss, psutil_uss, posix})')
+             '(one of the {tracemalloc, psutil, posix, psutil_pss, psutil_uss, posix}, or custom if using injected backend)')
     parser.add_argument("program", nargs=REMAINDER,
         help='python script or module followed by command line arguments to run')
     args = parser.parse_args()
