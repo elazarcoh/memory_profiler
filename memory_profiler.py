@@ -732,6 +732,8 @@ class LineProfiler(object):
         self.prevlines = []
         self.backend = choose_backend(kw.get('backend', None))
         self.prev_lineno = None
+        for f in kw.get('functions', []):
+            self.add_function(f)
 
     def __call__(self, func=None, precision=1):
         if func is not None:
@@ -1183,7 +1185,7 @@ def load_ipython_extension(ip):
     MemoryProfilerMagics.register_magics(ip)
 
 
-def profile(func=None, stream=None, precision=1, backend='psutil'):
+def profile(func=None, stream=None, precision=1, backend='psutil', functions=None):
     """
     Decorator that will run the function and print a line-by-line profile
     """
@@ -1192,7 +1194,7 @@ def profile(func=None, stream=None, precision=1, backend='psutil'):
         if not tracemalloc.is_tracing():
             tracemalloc.start()
     if func is not None:
-        get_prof = partial(LineProfiler, backend=backend)
+        get_prof = partial(LineProfiler, backend=backend, functions=functions or [])
         show_results_bound = partial(
             show_results, stream=stream, precision=precision
         )
